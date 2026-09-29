@@ -1,0 +1,53 @@
+# Dokploy → dynamic/openwebui-aimarkets-wildcard.yml
+# DNS: openwebui + *.openwebui A → 72.62.72.165
+# TLS pattern = same as ai.aimarkets.vn (denglish): web+websecure, LE HTTP-01
+# Tenant hosts: {userId}.openwebui.aimarkets.vn (24-hex MongoId). HTTP-01 cannot issue a wildcard
+# cert, so each buyer host also needs an exact-host cert router (openclaw/deploy/_apply-aimarkets-user-certs.py).
+# Replace the service URL with the Dokploy app name of the Open WebUI service (port 8080).
+
+http:
+  routers:
+    openwebui-aimarkets-shared-http:
+      rule: "Host(`openwebui.aimarkets.vn`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: openwebui-aimarkets-svc
+      priority: 200
+
+    openwebui-aimarkets-shared-https:
+      rule: "Host(`openwebui.aimarkets.vn`)"
+      entryPoints:
+        - websecure
+      service: openwebui-aimarkets-svc
+      priority: 200
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "openwebui.aimarkets.vn"
+
+    openwebui-aimarkets-tenant-http:
+      rule: "HostRegexp(`^[a-f0-9]{24}\\.openwebui\\.aimarkets\\.vn$`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: openwebui-aimarkets-svc
+      priority: 50
+
+    openwebui-aimarkets-tenant-https:
+      rule: "HostRegexp(`^[a-f0-9]{24}\\.openwebui\\.aimarkets\\.vn$`)"
+      entryPoints:
+        - websecure
+      service: openwebui-aimarkets-svc
+      priority: 50
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    openwebui-aimarkets-svc:
+      loadBalancer:
+        servers:
+          - url: "http://aimarketplace-openwebui:8080"
+        passHostHeader: true

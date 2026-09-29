@@ -159,6 +159,10 @@ async def search_users(
     user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
+    # AI Markets: tenants share one instance, so non-admins may only discover themselves.
+    if user.role != 'admin':
+        return {'users': [user.model_dump()], 'total': 1}
+
     limit = PAGE_ITEM_COUNT
 
     page = max(1, page)
@@ -816,6 +820,11 @@ async def get_user_by_id(user_id: str, user=Depends(get_admin_user), db: AsyncSe
 async def get_user_info_by_id(
     user_id: str, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
+    if user.role != 'admin' and user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.USER_NOT_FOUND,
+        )
     user = await Users.get_user_by_id(user_id, db=db)
     if user:
         groups = await Groups.get_groups_by_member_id(user_id, db=db)
