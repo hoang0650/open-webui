@@ -124,6 +124,7 @@ from open_webui.utils.misc import (
 )
 from open_webui.utils.payload import apply_params_to_form_data, apply_system_prompt_to_body, resolve_system_prompt
 from open_webui.utils.plugin import load_function_module_by_id
+from open_webui.utils.ponytail import ponytail_rules
 from open_webui.utils.response import merge_usage, normalize_usage
 from open_webui.utils.sanitize import sanitize_code
 from open_webui.utils.task import (
@@ -2508,6 +2509,10 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             )  # Required to handle system prompt variables
         except Exception:
             pass
+
+    ponytail = await ponytail_rules.get()
+    if ponytail:
+        form_data['messages'] = add_or_update_system_message(ponytail, form_data['messages'])
 
     form_data = await convert_url_images_to_base64(form_data, user=user)
 
