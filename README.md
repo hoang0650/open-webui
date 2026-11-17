@@ -259,3 +259,5 @@ If you believe you've found a security vulnerability, or something that shouldn'
 ---
 
 Created by [Timothy Jaeryang Baek](https://github.com/tjbck) - Let's make Open WebUI even more amazing together! 💪
+
+AI Markets SSO replay protection requires the existing REDIS_URL/Sentinel/Cluster configuration to address the same shared Redis from every WebUI replica. Missing or failed shared state returns 503; there is no process-local nonce fallback. Check the /sso flow with two test accounts before rollout. Focused tests: python -m unittest discover -s backend/tests -p test_aimarkets_replay.py.
