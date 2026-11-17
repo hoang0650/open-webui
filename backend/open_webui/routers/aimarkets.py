@@ -17,7 +17,6 @@ import json
 import logging
 import os
 import re
-import threading
 import time
 import uuid
 
@@ -32,6 +31,8 @@ from open_webui.models.users import Users
 from open_webui.utils.auth import create_token, get_password_hash
 from open_webui.utils.groups import apply_default_group_assignment
 from open_webui.utils.misc import parse_duration
+from open_webui.utils.redis import get_redis_client
+from open_webui.utils.aimarkets_replay import consume_ticket, ReplayStoreUnavailable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
@@ -44,8 +45,6 @@ USER_ID_RE = re.compile(r'^[a-f0-9]{24}$')
 MAX_TICKET_LEN = 4096
 EMAIL_DOMAIN = os.environ.get('AIMARKETS_SSO_EMAIL_DOMAIN', 'users.aimarkets.vn').strip() or 'users.aimarkets.vn'
 
-_used_jti: dict[str, float] = {}
-_used_lock = threading.Lock()
 
 
 def _secret() -> str:
@@ -87,18 +86,6 @@ def _verify(ticket: str) -> dict | None:
     return data
 
 
-def _consume_jti(jti: str, exp_ms: float) -> bool:
-    """Single-use tickets (per process); returns False when the ticket was already used."""
-    now = time.time()
-    with _used_lock:
-        for key in [k for k, until in _used_jti.items() if until < now]:
-            _used_jti.pop(key, None)
-        if jti in _used_jti:
-            return False
-        _used_jti[jti] = exp_ms / 1000 + 60
-        return True
-
-
 def _host_user_id(request: Request) -> str:
     host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or '').split(',')[0]
     label = host.strip().lower().split(':')[0].split('.')[0]
@@ -129,7 +116,11 @@ async def aimarkets_sso(request: Request, ticket: str = '', db: AsyncSession = D
         return _error('This AI Markets ticket belongs to another workspace.', 403)
 
     jti = str(data.get('jti') or '')
-    if not jti or not _consume_jti(jti, float(data['exp'])):
+    try:
+        consumed = await consume_ticket(jti, data['exp'], get_redis_client(async_mode=True))
+    except ReplayStoreUnavailable:
+        return _error('Shared SSO replay store unavailable. Please try again later.', 503)
+    if not consumed:
         return _error('This AI Markets ticket was already used. Launch Open WebUI again.', 401)
 
     name = _clean_name(data.get('name'), uid)
